@@ -7,7 +7,7 @@ type Candidate struct {
 	Annotation string
 }
 
-func parseCandidates(midashi string, s string) []*Candidate {
+func parseCandidates(s string) []*Candidate {
 	count := 0
 	p, q := 0, 0
 	for p < len(s) && s[p] >= 0x20 {

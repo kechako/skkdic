@@ -69,7 +69,7 @@ func _main() (int, error) {
 
 	args := flag.Args()
 	mode := skkdic.Add
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i][0] {
 		case '+':
 			mode = skkdic.Add

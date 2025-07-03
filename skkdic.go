@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"iter"
 	"os"
 	"regexp"
 	"strings"
@@ -12,42 +13,8 @@ import (
 
 	"github.com/google/btree"
 	"golang.org/x/text/encoding"
-	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
-
-type Encoding string
-
-const (
-	Auto       Encoding = ""
-	EUCJP      Encoding = "euc-jp"
-	eucJIS2004 Encoding = "euc-jis-2004"
-	ShiftJIS   Encoding = "shift_jis"
-	ISO2022JP  Encoding = "iso-2022-jp"
-	UTF8       Encoding = "utf-8"
-)
-
-func (e Encoding) isValid() bool {
-	switch e {
-	case EUCJP, eucJIS2004, ShiftJIS, ISO2022JP, UTF8:
-		return true
-	}
-
-	return false
-}
-
-func (e Encoding) toEncoding() encoding.Encoding {
-	switch e {
-	case EUCJP, eucJIS2004:
-		return japanese.EUCJP
-	case ShiftJIS:
-		return japanese.ShiftJIS
-	case ISO2022JP:
-		return japanese.ISO2022JP
-	}
-
-	return nil
-}
 
 type Dictionary struct {
 	delimiter         string
@@ -106,7 +73,7 @@ func (f writeOptionFunc) apply(opts *writeOptions) {
 
 func WithOutputEncoding(e Encoding) WriteOption {
 	return writeOptionFunc(func(opts *writeOptions) {
-		if e.isValid() {
+		if e.IsValid() {
 			opts.encoding = e
 		}
 	})
@@ -120,14 +87,8 @@ func (dic *Dictionary) Write(w io.Writer, opts ...WriteOption) error {
 		opt.apply(&options)
 	}
 
-	enc := options.encoding.toEncoding()
-
-	var bw *bufio.Writer
-	if enc == nil {
-		bw = bufio.NewWriter(w)
-	} else {
-		bw = bufio.NewWriter(transform.NewWriter(w, enc.NewEncoder()))
-	}
+	enc := options.encoding
+	bw := bufio.NewWriter(transform.NewWriter(w, enc.NewEncoder()))
 
 	var err error
 	_, err = bw.WriteString(";; -*- coding: " + string(options.encoding) + " -*-\n")
@@ -231,7 +192,7 @@ func (f readOptionFunc) apply(opts *readOptions) {
 
 func WithInputEncoding(e Encoding) ReadOption {
 	return readOptionFunc(func(opts *readOptions) {
-		if e.isValid() {
+		if e.IsValid() {
 			opts.encoding = e
 		}
 	})
@@ -285,7 +246,7 @@ func (dic *Dictionary) Read(r io.Reader, mode MergeMode, opts ...ReadOption) err
 			reader = io.MultiReader(bytes.NewReader(first), b)
 		}
 	} else {
-		enc = options.encoding.toEncoding()
+		enc = options.encoding
 		reader = r
 	}
 
@@ -321,7 +282,7 @@ func extractEncoding(line string) encoding.Encoding {
 		return nil
 	}
 
-	return Encoding(matches[1]).toEncoding()
+	return Encoding(matches[1])
 }
 
 func parseLine(s string) (midashi string, candidates []*Candidate) {
@@ -330,7 +291,7 @@ func parseLine(s string) (midashi string, candidates []*Candidate) {
 		return "", nil
 	}
 
-	candidates = parseCandidates(midashi, strCandidates)
+	candidates = parseCandidates(strCandidates)
 	if len(candidates) == 0 {
 		return "", nil
 	}
@@ -440,7 +401,7 @@ func (dic *Dictionary) RemoveCandidates(midashi string) {
 	entries.Delete(&entry{Midashi: midashi})
 }
 
-func (dic *Dictionary) Lookup(midashi string) []*Candidate {
+func (dic *Dictionary) Lookup(midashi string) iter.Seq[*Candidate] {
 	var entries *btree.BTreeG[*entry]
 	if isOkuriAri(midashi) {
 		entries = dic.okuriAriEntries
@@ -448,25 +409,31 @@ func (dic *Dictionary) Lookup(midashi string) []*Candidate {
 		entries = dic.okuriNashiEntries
 	}
 
+	var candidates []*Candidate
 	e, found := entries.Get(&entry{Midashi: midashi})
-	if !found {
-		return nil
+	if found {
+		candidates = e.Candidates
 	}
 
-	return e.Candidates
+	return func(yield func(*Candidate) bool) {
+		for _, c := range candidates {
+			if !yield(c) {
+				return
+			}
+		}
+	}
 }
 
-func (dic *Dictionary) Complete(midashi string) []string {
-	var completion []string
+func (dic *Dictionary) Complete(midashi string) iter.Seq[string] {
+	return func(yield func(string) bool) {
 
-	dic.okuriNashiEntries.AscendRange(&entry{Midashi: midashi}, &entry{Midashi: midashi + string(unicode.MaxRune)}, func(e *entry) bool {
-		if strings.HasPrefix(e.Midashi, midashi) {
-			completion = append(completion, e.Midashi)
-			return true
-		}
+		dic.okuriNashiEntries.AscendRange(&entry{Midashi: midashi}, &entry{Midashi: midashi + string(unicode.MaxRune)}, func(e *entry) bool {
+			if strings.HasPrefix(e.Midashi, midashi) {
+				return yield(e.Midashi)
+			}
 
-		return false
-	})
+			return false
+		})
+	}
 
-	return completion
 }

@@ -424,16 +424,24 @@ func (dic *Dictionary) Lookup(midashi string) iter.Seq[*Candidate] {
 	}
 }
 
-func (dic *Dictionary) Complete(midashi string) iter.Seq[string] {
-	return func(yield func(string) bool) {
-
+func (dic *Dictionary) Complete(midashi string, noExact bool) iter.Seq[*Candidate] {
+	return func(yield func(*Candidate) bool) {
 		dic.okuriNashiEntries.AscendRange(&entry{Midashi: midashi}, &entry{Midashi: midashi + string(unicode.MaxRune)}, func(e *entry) bool {
 			if strings.HasPrefix(e.Midashi, midashi) {
-				return yield(e.Midashi)
+				if noExact && e.Midashi == midashi {
+					// Exclude candidates that are an exact match.
+					return true
+				}
+
+				for _, c := range e.Candidates {
+					if !yield(c) {
+						return false
+					}
+				}
+				return true
 			}
 
 			return false
 		})
 	}
-
 }

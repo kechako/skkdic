@@ -1,3 +1,4 @@
+// Package skkdic provides a library for reading, writing, and manipulating SKK dictionary files.
 package skkdic
 
 import (
@@ -16,32 +17,15 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// A Dictionary represents an SKK dictionary, which consists of okuri-ari and okuri-nashi entries.
 type Dictionary struct {
 	delimiter         string
 	okuriAriEntries   *btree.BTreeG[*entry]
 	okuriNashiEntries *btree.BTreeG[*entry]
 }
 
-type dicOptions struct {
-	delimiter string
-}
-
-type Option interface {
-	apply(*dicOptions)
-}
-
-type optionFunc func(*dicOptions)
-
-func (f optionFunc) apply(opts *dicOptions) {
-	f(opts)
-}
-
-func WithAnnotationDelimiter(delimiter string) Option {
-	return optionFunc(func(opts *dicOptions) {
-		opts.delimiter = delimiter
-	})
-}
-
+// New creates a new SKK dictionary with the specified options.
+// If no options are provided, it uses default settings.
 func New(opts ...Option) *Dictionary {
 	options := dicOptions{
 		delimiter: ",",
@@ -57,34 +41,16 @@ func New(opts ...Option) *Dictionary {
 	}
 }
 
-type writeOptions struct {
-	encoding Encoding
-}
-
-type WriteOption interface {
-	apply(*writeOptions)
-}
-
-type writeOptionFunc func(*writeOptions)
-
-func (f writeOptionFunc) apply(opts *writeOptions) {
-	f(opts)
-}
-
-func WithOutputEncoding(e Encoding) WriteOption {
-	return writeOptionFunc(func(opts *writeOptions) {
-		if e.IsValid() {
-			opts.encoding = e
-		}
-	})
-}
-
+// Write writes the SKK dictionary to the provided writer in the specified encoding.
 func (dic *Dictionary) Write(w io.Writer, opts ...WriteOption) error {
 	options := writeOptions{
 		encoding: UTF8,
 	}
 	for _, opt := range opts {
 		opt.apply(&options)
+	}
+	if err := options.Validate(); err != nil {
+		return err
 	}
 
 	enc := options.encoding

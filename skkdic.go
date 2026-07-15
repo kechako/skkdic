@@ -390,8 +390,13 @@ func (dic *Dictionary) Lookup(midashi string) iter.Seq[*Candidate] {
 	}
 }
 
-func (dic *Dictionary) Complete(midashi string, noExact bool) iter.Seq[*Candidate] {
-	return func(yield func(*Candidate) bool) {
+type Completion struct {
+	Midashi    string
+	Candidates []*Candidate
+}
+
+func (dic *Dictionary) Complete(midashi string, noExact bool) iter.Seq[*Completion] {
+	return func(yield func(*Completion) bool) {
 		dic.okuriNashiEntries.AscendRange(&entry{Midashi: midashi}, &entry{Midashi: midashi + string(unicode.MaxRune)}, func(e *entry) bool {
 			if strings.HasPrefix(e.Midashi, midashi) {
 				if noExact && e.Midashi == midashi {
@@ -399,12 +404,12 @@ func (dic *Dictionary) Complete(midashi string, noExact bool) iter.Seq[*Candidat
 					return true
 				}
 
-				for _, c := range e.Candidates {
-					if !yield(c) {
-						return false
-					}
+				c := &Completion{
+					Midashi:    e.Midashi,
+					Candidates: e.Candidates,
 				}
-				return true
+
+				return yield(c)
 			}
 
 			return false

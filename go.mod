@@ -4,5 +4,5 @@ go 1.26
 
 require (
 	github.com/google/btree v1.1.3
-	golang.org/x/text v0.26.0
+	golang.org/x/text v0.40.0
 )
